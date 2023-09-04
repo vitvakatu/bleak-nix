@@ -3,52 +3,50 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs";
     flake-utils.url = "github:numtide/flake-utils";
-    poetry2nix = {
-      url = "github:nix-community/poetry2nix";
+    pyproject = {
+      url = "github:adisbladis/pyproject.nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, poetry2nix }:
+  outputs = { self, nixpkgs, flake-utils, pyproject }:
     flake-utils.lib.eachDefaultSystem (system:
       let
+        inherit (nixpkgs) lib;
         pkgs = nixpkgs.legacyPackages.${system};
-        inherit (poetry2nix.legacyPackages.${system}) mkPoetryPackages;
         python = pkgs.python311;
-        packages = ps: with ps; [
-          (buildPythonPackage
-            rec {
-              pname = "asyncio";
-              version = "3.4.3";
-              src = fetchPypi {
-                inherit pname version;
-                sha256 = "sha256-gzYP+LyXmA5P8lyWTHvTkj0zPRd6pPf7c2sBnybHy0E=";
+        bleakSrc = fetchGit {
+          url = "github:hbldh/bleak";
+          rev = "a377ce63766f1910725ada26caad1efe1f7ca281";
+        };
+        bleakProject = pyproject.lib.project.loadPyproject
+          {
+            pyproject = lib.importTOML "${bleakSrc}/pyproject.toml";
+          };
+        bleak =
+          let
+            attrs = pyproject.lib.renderers.buildPythonPackage
+              {
+                inherit python; project = bleakProject;
+                format = "pyproject";
               };
-              doCheck = false; # TODO: try to disable?
-            })
-          # (buildPythonPackage
-          #   rec {
-          #     pname = "bleak";
-          #     version = "0.21.0";
-          #     format = "pyproject";
-          #     src = fetchPypi {
-          #       inherit pname version;
-          #       sha256 = "sha256-InqIt4gx5uIyKpviCdzmYoF3OCiF4wZfvpwlRFqbrnk=";
-          #     };
-          #     nativeBuildInputs = [ ps.poetry-core ];
-          #   })
-          # ps.typing-extensions
-          ps.pip
-        ];
-        # ++
-        # (mkPoetryPackages
-        #   {
-        #     projectDir = fetchGit {
-        #       url = "https://github.com/hbldh/bleak";
-        #       rev = "a377ce63766f1910725ada26caad1efe1f7ca281";
-        #     };
-        #     inherit python;
-        #   }).poetryPackages;
+          in
+          python.pkgs.buildPythonPackage attrs;
+        packages = ps: with ps;
+          [
+            (buildPythonPackage
+              rec {
+                pname = "asyncio";
+                version = "3.4.3";
+                src = fetchPypi {
+                  inherit pname version;
+                  sha256 = "sha256-gzYP+LyXmA5P8lyWTHvTkj0zPRd6pPf7c2sBnybHy0E=";
+                };
+                doCheck = false; # TODO: try to disable?
+              })
+            ps.pip
+            bleak
+          ];
       in
       {
         devShells = rec {
