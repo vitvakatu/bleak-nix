@@ -3,35 +3,18 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs";
     flake-utils.url = "github:numtide/flake-utils";
-    pyproject = {
-      url = "github:adisbladis/pyproject.nix";
+    poetry2nix = {
+      url = "github:K900/poetry2nix/new-bootstrap-fixes";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, pyproject }:
+  outputs = { self, nixpkgs, flake-utils, poetry2nix }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        inherit (nixpkgs) lib;
         pkgs = nixpkgs.legacyPackages.${system};
         python = pkgs.python311;
-        bleakSrc = fetchGit {
-          url = "github:hbldh/bleak";
-          rev = "a377ce63766f1910725ada26caad1efe1f7ca281";
-        };
-        bleakProject = pyproject.lib.project.loadPyproject
-          {
-            pyproject = lib.importTOML "${bleakSrc}/pyproject.toml";
-          };
-        bleak =
-          let
-            attrs = pyproject.lib.renderers.buildPythonPackage
-              {
-                inherit python; project = bleakProject;
-                format = "pyproject";
-              };
-          in
-          python.pkgs.buildPythonPackage attrs;
+        inherit (poetry2nix.legacyPackages.${system}) mkPoetryPackages;
         packages = ps: with ps;
           [
             (buildPythonPackage
@@ -46,7 +29,13 @@
               })
             ps.pip
             bleak
-          ];
+          ] ++ (mkPoetryPackages {
+            projectDir = fetchGit {
+              url = "github:/hbldh/bleak";
+              rev = "a377ce63766f1910725ada26caad1efe1f7ca281";
+            };
+            inherit python;
+          }).poetryPackages;
       in
       {
         devShells = rec {
